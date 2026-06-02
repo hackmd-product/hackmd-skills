@@ -1,0 +1,23 @@
+{
+  "skill_name": "agentic-work-log",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "/agentic-work-log --note=https://hackmd.io/abc123XYZ --dry-run",
+      "expected_output": "Resolves note id, prints callout preview, does not update HackMD",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "/agentic-work-log --new-note --title=\"Side project log\"",
+      "expected_output": "Creates HackMD note, appends first callout, saves note id to config",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "幫我設定 launchd 每晚同步 agent 工作到 HackMD 筆記 abc123",
+      "expected_output": "scheduling.md with AGENTIC_WORK_LOG_NOTE_ID=abc123 in plist env",
+      "files": []
+    }
+  ]
+}

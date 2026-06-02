@@ -1,0 +1,23 @@
+{
+  "skill_name": "push-to-hackmd",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "push to HackMD — save this conversation's implementation plan as a private note titled 'SSO rollout plan'",
+      "expected_output": "Agent resolves plan text, checks hackmd-cli/login, creates personal note with owner permissions, returns hackmd.io URL",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "backup at HackMD: upload ./docs/runbook.md to my team workspace 'engineering' in a folder called Runbooks",
+      "expected_output": "Agent reads runbook.md, uses API for folder if needed, creates or updates team note under engineering, reports URL",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "save to HackMD the HTML viz in /tmp/viz.html — update note WNkLM6gkS0Cg2cQ8rv7bYA if it still matches remote",
+      "expected_output": "Agent exports baseline, diffs before update, merges if remote changed, updates note, reminds Custom CSS for HTML",
+      "files": []
+    }
+  ]
+}

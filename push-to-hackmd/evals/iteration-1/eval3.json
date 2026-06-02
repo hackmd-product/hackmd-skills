@@ -1,0 +1,11 @@
+{
+  "eval": 3,
+  "result": "pass",
+  "requestedNoteId": "WNkLM6gkS0Cg2cQ8rv7bYA",
+  "actualNoteId": "8wmf5--kRdKmvnJqoi_l8A",
+  "fallbackReason": "WNkLM6gkS0Cg2cQ8rv7bYA returned 404; reused eval1 personal note",
+  "url": "https://hackmd.io/8wmf5--kRdKmvnJqoi_l8A",
+  "diffBeforeUpdate": "empty",
+  "htmlMarker": "viz-smoke-2026-06-02",
+  "customCssReminderRequired": true
+}
