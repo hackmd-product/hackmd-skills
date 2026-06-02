@@ -13,22 +13,11 @@ user-invocable: true
 
 # Agentic Work Log
 
-增量整理多個 agent harness 的 user prompt，**append** 到使用者指定的 HackMD 筆記（或新建一篇）。邏輯源自 `agent-day-review`；輸出目標為 HackMD，並內建排程說明。
+增量整理多個 agent harness 的 user prompt，**append** 到使用者指定或新建的 HackMD 筆記。支援 Claude Code、Cursor、Codex、OpenCode、Antigravity 等來源，並內建排程說明（見 `references/scheduling.md`）。
 
 **不取代**使用者自己的反思；只提供可核對的事實底稿（what + pivot/insight）。
 
----
-
-## 與 agent-day-review 的差異
-
-| | agent-day-review | agentic-work-log |
-|--|------------------|------------------|
-| 輸出 | 當週 Obsidian cycle log | 使用者指定或新建的 HackMD 筆記 |
-| 寫入 | 本地 `.md` callout | `hackmd-cli` export → merge → update |
-| 排程 | 文件末尾範例 | `references/scheduling.md` + `scripts/run-scheduled.sh` |
-| Sources | Claude + Cursor | + Codex, OpenCode, Antigravity + 自訂 |
-
-兩者 state **分開**：`~/.config/agentic-work-log/` vs `~/.claude/skill-state/agent-day-review/`。可同時啟用。
+**State：** `~/.config/agentic-work-log/config.json`（增量時間戳與預設筆記 id，見 [references/config.md](references/config.md)）。
 
 ---
 
@@ -151,7 +140,7 @@ python3 "<skill-dir>/scripts/collect_prompts.py" \
 
 ## Phase C–F
 
-與 `agent-day-review` 相同：按 `cwd` 分桶（>30 截斷）→ subagent 聚類（≤3 並行）→ 合併 trim → callout。
+按 `cwd` 分桶（>30 截斷）→ subagent 聚類（≤3 並行）→ 合併 trim → callout：
 
 **超大輸入：** 若 `collect_prompts.py` 輸出 >50 則或估計原文 >30k token，先按 `cwd` 分塊各自摘要，再合併為單一 callout（map-reduce），仍受 `char_budget` 限制。
 
@@ -247,9 +236,8 @@ REPO="<path-to-hackmd-skills-checkout>"
 
 ## 相關 skill
 
-- `agent-day-review` — Obsidian cycle log  
 - `push-to-hackmd` — 通用發佈；本 skill 的 Phase H 使用 `shared/scripts/safe-sync.sh`  
-- `loop` — 互動 session 內週期喚醒（非 OS 排程）
+- `visualize-hmd` — 從對話產出 HTML 視覺化並發佈至 HackMD
 
 ---
 
