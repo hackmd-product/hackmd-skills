@@ -28,7 +28,7 @@ NOISE_PREFIXES = (
 )
 
 SLASH_ONLY = re.compile(
-    r"^/\s*(clear|exit|warmup|handoff|agentic-work-log|agent-day-review)\s*$",
+    r"^/\s*(clear|exit|warmup|handoff|agentic-work-log)\s*$",
     re.I,
 )
 
