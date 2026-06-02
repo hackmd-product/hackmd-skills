@@ -240,7 +240,7 @@ def collect_opencode(since: datetime) -> list[dict]:
         return []
     out: list[dict] = []
     since_ms = int(since.timestamp() * 1000)
-    conn = sqlite3.connect(db)
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     try:
         rows = conn.execute(
             """

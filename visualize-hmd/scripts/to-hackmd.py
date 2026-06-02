@@ -3,7 +3,7 @@
 to-hackmd.py — Convert a standalone HTML file to HackMD-compatible markup.
 
 Usage:
-    python3 to-hackmd.py <input.html> <output.html>
+    python3 to-hackmd.py [--strict] <input.html> <output.html>
 
 What it does:
   1. Strips <html>, <head>, <body> wrapper tags
@@ -14,8 +14,13 @@ What it does:
   6. Strips leading whitespace from HTML lines (prevents 4-space code-block)
   7. Replaces <main> with <div>
   8. Wraps body in <div class="viz-root">
+
+With --strict: exit 1 if sanity checks fail after conversion.
 """
 
+from __future__ import annotations
+
+import argparse
 import re
 import sys
 
@@ -36,11 +41,8 @@ def dedent_css(css: str) -> str:
 
 
 def fix_selectors(css: str) -> str:
-    # Remove html {} rules
     css = re.sub(r'\nhtml\s*\{[^}]*\}', '', css)
-    # body {} -> .viz-root {}
     css = re.sub(r'(?m)^body\s*\{', '.viz-root {', css)
-    # a {} -> .viz-root a {}  (only bare `a`, not e.g. `.nav a`)
     css = re.sub(r'(?m)^a\s*\{', '.viz-root a {', css)
     return css
 
@@ -56,11 +58,24 @@ def replace_main(html: str) -> str:
     return html
 
 
-def convert(src: str, dst: str) -> None:
+def sanity_check(result: str) -> list[str]:
+    idx = result.index('</style>')
+    body_part = result[idx:]
+    issues: list[str] = []
+    blank_count = body_part.count('\n\n') - 1
+    if blank_count > 0:
+        issues.append(f"blank lines in body: {blank_count}")
+    if re.search(r'</?main\b', result):
+        issues.append("<main> tags remain")
+    if re.findall(r'(?m)^body\s*\{', result):
+        issues.append("bare body{} rules remain")
+    return issues
+
+
+def convert(src: str, dst: str, strict: bool = False) -> None:
     with open(src, 'r', encoding='utf-8') as f:
         content = f.read()
 
-    # --- Style block ---
     style_match = re.search(r'<style>(.*?)</style>', content, re.DOTALL)
     if not style_match:
         raise ValueError("No <style> block found in input file")
@@ -70,7 +85,6 @@ def convert(src: str, dst: str) -> None:
     css_header = '\n' + FONTS_IMPORT + '\n' + MARKDOWN_BODY_OVERRIDE + '\n'
     style_inner = css_header + style_inner.lstrip('\n')
 
-    # --- Body ---
     body_match = re.search(r'<body>(.*?)</body>', content, re.DOTALL)
     if not body_match:
         raise ValueError("No <body> block found in input file")
@@ -84,21 +98,25 @@ def convert(src: str, dst: str) -> None:
     with open(dst, 'w', encoding='utf-8') as f:
         f.write(result)
 
-    # Sanity checks
-    idx = result.index('</style>')
-    body_part = result[idx:]
-    blank_count = body_part.count('\n\n') - 1  # -1 for the style/div separator
-    main_count = len(re.findall(r'</?main', result))
-    body_rules = re.findall(r'(?m)^body\s*\{', result)
-
+    issues = sanity_check(result)
     print(f"Output: {dst} ({len(result):,} chars)")
-    print(f"Blank lines in body: {blank_count}  (should be 0)")
-    print(f"<main> tags remaining: {main_count}  (should be 0)")
-    print(f"bare body{{}} rules remaining: {body_rules}  (should be [])")
+    for issue in issues:
+        print(f"  FAIL: {issue}")
+    if not issues:
+        print("  Sanity: OK")
+
+    if strict and issues:
+        sys.exit(1)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Convert standalone HTML to HackMD markup")
+    parser.add_argument("input", help="Source standalone HTML")
+    parser.add_argument("output", help="Destination HackMD markup")
+    parser.add_argument("--strict", action="store_true", help="Exit 1 if sanity checks fail")
+    args = parser.parse_args()
+    convert(args.input, args.output, strict=args.strict)
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} <input.html> <output.html>")
-        sys.exit(1)
-    convert(sys.argv[1], sys.argv[2])
+    main()

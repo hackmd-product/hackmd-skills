@@ -12,167 +12,128 @@ description: >-
 
 # Visualize — HackMD
 
-Turns the current conversation context — plans, trade-offs, decisions, phases, grilling outcomes — into a polished HTML/CSS visualization, then publishes it to HackMD.
+Turns conversation context into HTML/CSS, builds HackMD-safe markup, publishes to HackMD.
 
-## Trigger phrases
+**Scope:** User wants a **generated visualization** from the discussion. If they already have a file to upload, use `push-to-hackmd` instead.
 
-"visualize", "visualize with HTML/CSS", "show in HTML", "show me with a webpage", or any equivalent request to render the current discussion visually.
+**Paths:** In a monorepo checkout, set `SKILL_DIR` to this folder (e.g. `hackmd-skills/visualize-hmd`). Scripts live under `$SKILL_DIR/scripts/`.
 
-## Step 1 — Analyze context
+---
 
-Identify what to visualize from the current conversation:
+## For agents (workflow)
 
-- **Architecture decisions**: two or more competing options with explicit or implicit trade-offs
-- **Phased plan**: sequential stages with meaningful boundaries between them
-- **Decision tree / crux**: a single difficult concept or constraint that everything else hinges on
-- **Topic overview**: when there's no active plan, summarize the discussion as a structured brief
+### Step 1 — Analyze context
 
-Extract the "crux" — the hardest, most consequential tension or insight — and make sure the layout makes it legible at a glance.
+Identify: architecture trade-offs, phased plan, decision crux, or topic overview. Extract the **crux** (hardest tension) — it gets the most visual weight.
 
-## Step 2 — Design the layout
+### Step 2 — Layout selection (decision tree)
 
-Choose the dominant layout pattern based on what you found:
+```
+Exactly 2 competing options with clear pros/cons?
+  → Trade-off map
+4–6 sequential phases with distinct boundaries?
+  → Phase runway
+3+ independent decisions, no natural order?
+  → Decision grid
+Otherwise / mixed / overview only?
+  → Brief (hero + sections); may embed another pattern in one section
+Multiple patterns apply?
+  → Pick the one that makes the crux most visible
+```
 
 | Pattern | When to use |
-|---|---|
-| **Trade-off map** (two lanes + divider) | Two competing options, clear pros/cons |
-| **Phase runway** (4–6 cards in a row) | Sequential stages, each with its own character |
-| **Decision grid** (2×N or 3×N cards) | Multiple independent decisions, no natural order |
-| **Brief** (hero + section blocks) | General topic overview with sub-sections |
+|---------|-------------|
+| **Trade-off map** | Two lanes + divider |
+| **Phase runway** | 4–6 cards in a row |
+| **Decision grid** | 2×N or 3×N cards |
+| **Brief** | General overview |
 
-Compose sections. Each section should carry one idea. Sections can be mixed: e.g., a brief with a trade-off map embedded in one section.
+Use HTML fragments and tokens from [reference.md](reference.md) — do not invent new CSS class names.
 
-## Step 3 — Write the standalone HTML
+### Step 3 — Write standalone HTML
 
-Write a full standalone HTML file to `/tmp/viz.html`. Include `<!DOCTYPE html>`, `<html>`, `<head>` (with Google Fonts `<link>`), and `<body>`. This file previews correctly in any browser and is the source of truth before the build step.
+Write `/tmp/viz.html` with `<!DOCTYPE html>`, `<html>`, `<head>` (Google Fonts `<link>`), `<body>`. No JavaScript. Avoid `<main>` (build script rewrites to `<div>`).
 
-**CSS principles** (see [reference.md](reference.md) for full token set and patterns):
-- Typography: `clamp()` for headings, tight `letter-spacing` (−0.03 to −0.065em) for display sizes
-- Cards: `border-radius: var(--radius)`, `border: 1px solid var(--border)`, `background: var(--bg-surface)`
-- Picked/active state: tint border and background with `--primary` at low opacity
-- Labels: `font-size: 12px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--primary)`
-- Use `<details><summary>` for progressive disclosure of dense reference material
-
-**CSS should show, not adorn.** Every visual treatment should make a distinction legible:
-- Tint a card to signal "picked"
-- Use a green badge for "confirmed", amber for "risk", red for "blocker"
-- Draw a phase boundary with a connecting element, not just whitespace
-
-**Element safety notes** (enforced by the build script, but useful to know):
-- Avoid `<main>` — stripped by HackMD's sanitizer; build script replaces it with `<div>`
-- `<div>`, `<section>`, `<article>`, `<header>`, `<nav>`, `<aside>`, `<details>`, `<summary>` are safe
-- No JavaScript (stripped regardless)
-
-## Step 4 — Build HackMD-compatible output
-
-Run the build script to produce `/tmp/viz-hackmd.html`:
+### Step 4 — Build HackMD output
 
 ```bash
-python3 /path/to/visualize-hmd/scripts/to-hackmd.py \
-  /tmp/viz.html \
-  /tmp/viz-hackmd.html
+SKILL_DIR="<path-to>/visualize-hmd"
+python3 "$SKILL_DIR/scripts/to-hackmd.py" --strict /tmp/viz.html /tmp/viz-hackmd.html
 ```
 
-What the script does:
-1. Strips outer `<html>` / `<head>` / `<body>` tags
-2. Extracts `<style>`, dedents CSS to column 0, prepends Google Fonts `@import` and `.markdown-body { max-width: none !important; padding: 0 !important; }`
-3. Rewrites `body {}` → `.viz-root {}`, removes `html {}`, rewrites bare `a {}` → `.viz-root a {}`
-4. Removes all blank lines from the HTML body (prevents Type 6 HTML block termination — see below)
-5. Strips leading whitespace from all HTML lines (prevents 4-space code-block triggering)
-6. Replaces `<main …>` / `</main>` with `<div …>` / `</div>`
-7. Wraps body in `<div class="viz-root">…</div>`
+Check `$?` — non-zero means conversion failed; do not publish.
 
-## Step 5 — Publish to HackMD
-
-Choose one of three channels:
-
-### CLI
+**One-shot create (optional):**
 
 ```bash
-# Create
-hackmd-cli notes create \
-  --title="Visualization — <topic>" \
-  --readPermission=owner \
-  --writePermission=owner \
-  --content="$(cat /tmp/viz-hackmd.html)"
-
-# Update existing
-hackmd-cli notes update \
-  --noteId=<noteId> \
-  --content="$(cat /tmp/viz-hackmd.html)"
+VIZ_TITLE="Visualization — <topic>" "$SKILL_DIR/scripts/publish-viz.sh" /tmp/viz.html /tmp/viz-hackmd.html
 ```
 
-### REST API
-
-```bash
-# Create
-curl -s -X POST https://api.hackmd.io/v1/notes \
-  -H "Authorization: Bearer $HACKMD_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"title\":\"Visualization — <topic>\",\"content\":$(jq -Rs . < /tmp/viz-hackmd.html),\"readPermission\":\"owner\",\"writePermission\":\"owner\"}"
-
-# Update existing
-curl -s -X PATCH https://api.hackmd.io/v1/notes/<noteId> \
-  -H "Authorization: Bearer $HACKMD_API_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"content\":$(jq -Rs . < /tmp/viz-hackmd.html)}"
-```
-
-### MCP
+### Step 5 — Publish channel selection
 
 ```
-hackmd_create_note(
-  title="Visualization — <topic>",
-  content=<contents of /tmp/viz-hackmd.html>,
-  readPermission="owner",
-  writePermission="owner"
-)
+hackmd-cli in PATH and hackmd-cli whoami succeeds?
+  yes → CLI (preferred)
+else HACKMD_API_TOKEN set?
+  yes → REST API (see push-to-hackmd / shared/references/api.md)
+else HackMD MCP available?
+  yes → MCP create_note
+else → stop; instruct user to hackmd-cli login or set token
 ```
 
-After creation, report the URL to the user: `https://hackmd.io/<noteId>`
+**Create vs update:**
 
-## Step 6 — Remind user to enable Custom CSS preview
+| User intent | Action |
+|-------------|--------|
+| "visualize" (default) | **Create** new note |
+| "update" / provides note URL or id | Resolve id → export baseline → replace body via [../../shared/scripts/safe-sync.sh](../../shared/scripts/safe-sync.sh) |
+| Same title already exists | Warn; ask before overwrite |
 
-HTML/CSS visualizations embed styles in `<style>` blocks. HackMD applies those styles only when **Custom CSS** preview is enabled.
+For updates, follow [../../shared/README.md](../../shared/README.md).
 
-After returning the note URL, **always** remind the user:
+### Step 6 — Custom CSS + size
 
-> Open the note, click the **paintbrush icon** in the toolbar (tooltip: "Select theme to preview"), and choose **Custom CSS** to see the visualization styled correctly.
+- Append or confirm reminder: `<!-- Enable Custom CSS preview: paintbrush → Custom CSS -->`
+- Tell the user to enable **Custom CSS** in the toolbar (required for `<style>` to apply).
+- If built output **> 500 KB**, warn; suggest more `<details>` or split notes.
 
-Without this step, the note renders as unstyled markup. Do not skip this reminder for HTML visualizations.
+### Failure modes
+
+| Failure | Recovery |
+|---------|----------|
+| `to-hackmd.py --strict` fails | Fix HTML (blank lines in body, `<main>`, unscoped `body{}`); rebuild |
+| Publish fails | Do not claim success; report CLI/API error |
+| User sees unstyled note | Custom CSS not enabled — repeat step 6 |
+
+---
+
+## For manual users
+
+See [README.md](README.md) and [reference.md](reference.md) for design tokens, patterns, and CLI examples.
 
 ---
 
 ## Why blank lines break HackMD rendering
 
-HackMD uses markdown-it (CommonMark). HTML block parsing rules:
-
-| Block type | Examples | Ends at |
-|---|---|---|
-| Type 1 | `<style>`, `<script>`, `<pre>` | Closing tag — blank lines **OK** inside |
-| Type 6 | `<div>`, `<section>`, `<header>`, … | **Blank line** — terminates the block |
-
-A blank line inside a `<div>` ends the HTML block. Content after the blank line is re-parsed as Markdown. If that content has 4+ spaces of indentation, it becomes a code block. This is why the build script removes all blank lines from the body HTML.
+HackMD uses markdown-it (CommonMark). Type 6 HTML blocks (`<div>`, etc.) **end at a blank line**. The build script removes blank lines inside the body and strips 4-space indentation so content is not parsed as code blocks.
 
 ---
-
-## What good looks like
-
-- A 300-line Markdown plan becomes 6–10 decision cards, each with a label, heading, context, and 2–3 lines of consequence
-- Trade-offs are spatially separated — reader can scan the layout and immediately understand the tension
-- The crux gets the most visual weight: largest type, highest contrast, or most prominent position
-- Progressive disclosure (`<details>`) hides supporting detail so the primary read is clean
-- The whole artifact fits one screen at 1200px wide without scrolling past the hero
 
 ## Antipatterns
 
-- Do not generate decorative sections that restate what the cards already say
-- Do not use more than 3 accent colors in a single artifact
-- Do not omit the crux — if the context has a hard trade-off, make it visible
-- Do not add JavaScript even as a fallback
+- Decorative sections that repeat card content
+- More than 3 accent colors
+- Omitting the crux when a hard trade-off exists
+- JavaScript (stripped by HackMD)
 
 ---
 
+## Related skills
+
+- [../push-to-hackmd/SKILL.md](../push-to-hackmd/SKILL.md) — generic publish / backup
+- [../agentic-work-log/SKILL.md](../agentic-work-log/SKILL.md) — link new viz URL in work log callout when useful
+- [../shared/README.md](../shared/README.md) — safe update contract
+
 ## Design system
 
-See [reference.md](reference.md) for the full token set, spacing scale, and layout patterns.
+See [reference.md](reference.md).

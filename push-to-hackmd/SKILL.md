@@ -112,27 +112,37 @@ curl -s -H "Authorization: Bearer $HACKMD_API_TOKEN" https://api.hackmd.io/v1/me
 
 Do not echo or log the token. If login fails, re-check token scope and expiry.
 
-When using API fallbacks after `hackmd-cli login`, read the token from `~/.hackmd/config.json` (`accessToken`) into `HACKMD_API_TOKEN` in the shell — do not print it.
+When using API fallbacks after `hackmd-cli login`, read the token from `~/.hackmd/config.json` (`accessToken`) into `HACKMD_API_TOKEN` in a **subshell** for `curl` only — **never** `echo` the token or paste it into chat.
 
 ---
 
 ## 3. Determine where to store content
 
-Clarify when not obvious:
+**Policy: ask-first when ambiguous.** Infer only when the user gave an explicit URL, note id, or unambiguous phrase (`new note`, `update this note`, team name that exists in `hackmd-cli teams`).
 
-| Question | Options |
-|----------|---------|
-| Workspace | **Personal** (`hackmd-cli notes`) vs **team** (`--teamPath`, from `hackmd-cli teams` — confirm path exists; do not assume a team name) |
-| Note | **New** vs **update existing** (user provides URL, note id, or title to match in list) |
-| Folder | Optional; API only — list/create via `/folders` or `/teams/{teampath}/folders` |
-| Permissions | Default `--readPermission=owner --writePermission=owner` unless user asks otherwise |
+### Decision tree
 
-Resolve **note id** for updates:
+```
+User gave hackmd.io URL or note id?
+  yes → ../../shared/scripts/resolve-note.sh "<url-or-id>" → noteId (+ team:PATH on stderr if team URL)
+User said "new" / "create" / no existing note implied?
+  yes → create path (step 4); capture new noteId from CLI output
+User said "update" / gave title to match?
+  yes → list notes (personal or team):
+        hackmd-cli notes --output=json | jq -r --arg t "Exact Title" '[.[] | select(.title==$t)]'
+        (team: hackmd-cli team-notes --teamPath=X --output=json | jq …)
+        • 0 matches → ask user
+        • 1 match → use .id
+        • 2+ matches → list candidates; ask user (never pick arbitrarily)
+User named a team?
+  yes → hackmd-cli teams — teamPath must appear; else stop with error
+No team mentioned?
+  → personal workspace (hackmd-cli notes)
+Folder requested?
+  → API only; see ../../shared/references/api.md
+```
 
-- User gives `https://hackmd.io/...` → extract id or short id; use `team-notes --output=json` if needed.
-- Match by title in `hackmd-cli notes` / `team-notes` output.
-
-Record chosen `noteId`, `teamPath` (if any), and `parentFolderId` (if folder used).
+Record `noteId`, `teamPath` (if any), `parentFolderId` (if folder used).
 
 ---
 
@@ -161,27 +171,31 @@ hackmd-cli team-notes create \
   --content="$(cat /path/to/content.md)"
 ```
 
-If a **folder** is required, create the note via API with `parentFolderId`, or `PATCH` after create — see [references/api.md](references/api.md).
+If a **folder** is required, create the note via API with `parentFolderId`, or `PATCH` after create — see [../../shared/references/api.md](../../shared/references/api.md).
 
 Capture returned **note id** from CLI table output.
 
 ### Update (existing note) — avoid overwriting remote edits
 
-1. **Baseline**: `hackmd-cli export --noteId=<id> > /tmp/hackmd-baseline.md`
-2. Apply local/content changes to a working file.
-3. **Recheck**: `hackmd-cli export --noteId=<id> > /tmp/hackmd-recheck.md`
-4. `diff /tmp/hackmd-baseline.md /tmp/hackmd-recheck.md`
-   - **No diff** → safe to push.
-   - **Has diff** → remote changed; merge remote into your working copy, then push (never blind overwrite).
-5. **Push**:
-   - Personal: `hackmd-cli notes update --noteId=<id> --content="$(cat /path/to/working.md)"`
-   - Team: `hackmd-cli team-notes update --teamPath=<team> --noteId=<id> --content="$(cat /path/to/working.md)"`
+Follow [../../shared/README.md](../../shared/README.md) (safe update contract). Prefer the script:
+
+```bash
+# After building /path/to/working.md from baseline + your edits:
+REPO="$(cd "<skill-or-repo-root>" && pwd)"   # hackmd-skills checkout, or path to shared/
+"$REPO/shared/scripts/safe-sync.sh" push \
+  --note-id "<id>" \
+  --baseline-file /tmp/hackmd-baseline.md \
+  --working-file /path/to/working.md \
+  [--team-path "<team>"]
+```
+
+Manual equivalent: export baseline → edit working copy → `safe-sync.sh push` (rechecks export before update). Exit `1` = conflict — show diff summary and **ask the user** how to merge; do not blind overwrite.
 
 `team-notes update` requires the **internal note id**, not the public short id.
 
 ### Images (optional)
 
-After the note exists, upload local images via API `POST /v1/notes/{noteId}/images`, then insert returned `data.link` into the markdown. Details: [references/api.md](references/api.md).
+After the note exists, upload local images via API `POST /v1/notes/{noteId}/images`, then insert returned `data.link` into the markdown. Details: [../../shared/references/api.md](../../shared/references/api.md).
 
 ### API fallback
 
@@ -201,7 +215,7 @@ curl -s -X PATCH "https://api.hackmd.io/v1/notes/<noteId>" \
   -d "{\"content\":$(jq -Rs . < file.md)}"
 ```
 
-Team endpoints: `/v1/teams/{teampath}/notes` — see [references/api.md](references/api.md).
+Team endpoints: `/v1/teams/{teampath}/notes` — see [../../shared/references/api.md](../../shared/references/api.md).
 
 ### Finish
 
@@ -216,7 +230,8 @@ Return to the user:
 
 ## Edge cases
 
-- **Very large content**: Prefer `cat file | hackmd-cli notes create` over inline shell quoting.
+- **Very large content**: Prefer `cat file | hackmd-cli notes create` over inline shell quoting. If content **> 5 MB**, warn and confirm; if **> 50 MB**, stop (check HackMD limits).
+- **HTML with `<style>`**: Suggest `visualize-hmd` + `to-hackmd.py` if layout breaks; append HTML comment: `<!-- Enable Custom CSS preview (paintbrush → Custom CSS) -->`
 - **Binary assets**: Not inlined in notes; upload images via API or host elsewhere and link.
 - **No token and user declines install**: Stop with links to join + API authorization docs; do not guess credentials.
 - **Conflict on update**: Show a short summary of remote vs local diff; ask how to merge if unclear.
@@ -228,6 +243,8 @@ Return to the user:
 
 ## References
 
-- [references/api.md](references/api.md) — folders, team routes, image upload, swagger paths
+- [../../shared/README.md](../../shared/README.md) — safe update contract, destination policy
+- [../../shared/references/api.md](../../shared/references/api.md) — folders, team routes, image upload
+- [../../shared/scripts/safe-sync.sh](../../shared/scripts/safe-sync.sh) — push with recheck
 - [HackMD API swagger](https://api.hackmd.io/v1/docs/swagger.json)
 - [hackmd-cli](https://github.com/hackmdio/hackmd-cli)

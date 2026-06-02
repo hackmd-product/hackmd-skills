@@ -41,10 +41,16 @@ done
 ```
 hackmd-skills/
 ├── README.md
+├── shared/                  # safe-sync, resolve-note, API reference
+│   ├── README.md
+│   ├── references/api.md
+│   └── scripts/
 ├── agentic-work-log/
 ├── push-to-hackmd/
 └── visualize-hmd/
 ```
+
+Cross-skill contracts (anti-clobber updates, destination policy): [shared/README.md](shared/README.md).
 
 ## Migrating from `visualize-hmd` standalone repo
 
